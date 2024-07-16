@@ -1,0 +1,48 @@
+# Persistent Volume
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: hostpath-pv
+spec:
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: slow
+  hostPath:
+    path: /etc/hostPath
+    type: Directory
+
+# Persistent Volume Claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hostpath-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+  storageClassName: slow
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox-test
+spec:
+  containers:
+    - name: busybox
+      image: docker.io/library/busybox:stable
+      imagePullPolicy: Never
+      command: ["sh", "-c", "cat /data/data.txt"]
+      volumeMounts:
+        - name: pv-host-data # name of the volume under pod spec line number -> 46
+          mountPath: /data
+  volumes:
+    - name: pv-host-data
+      PersistentVolumeClaim:
+        claimName: hostpath-pv-claim # metadata name of the pv claim resource
