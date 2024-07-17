@@ -33,3 +33,31 @@ A PersistentVolume allows you to abstract volume storage details away from Pods 
 * **PersistentVolume** defines a storage resource.
 * **PersistentVolumeClaim** defines a request to consume a storage resource.
 * **PersistentVolumeClaims** automatically bind to a PersistentVolume that meets the criteria. 
+* Mount a PersistentVolumeClaim to a container like a regular volume.
+
+## Deployments
+A deployment actively manages a desired state for a set of replica Pods.
+### Performing Rolling Updates
+A rolling update allows you to change a Deployments Pod template, gradually replacing replicas with zero downtime.
+
+You can use rolling updates to deploy **new code!**.
+
+### Commands
+To scale we can use below methods
+1. Running kubectl scale command on the deployment
+```
+kubectl scale deployment/nginx-deployment --replicas=4
+```
+2. Modifying the replicas file directly using "kubectl edit"
+```
+kubectl edit deployment nginx-deployment
+```
+3. Modifying the template file and then running apply command
+```
+kubectl apply -f deployment.yaml
+```
+#### Exam Tips
+* A Deployment actively manages a desired state for a set of replica pods.
+* The Pod template provies the Pod configuration that the Deployment will use to create new Pods. 
+* The replicas field sets the number of replicas. You can set it Up or Down to scale up or scale down. 
+
