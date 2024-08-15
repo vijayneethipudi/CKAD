@@ -1,0 +1,242 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: airflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-pvc
+  namespace: airflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: airflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:13
+          env:
+            - name: POSTGRES_DB
+              value: airflow
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: mysecretpassword
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: airflow
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: postgres
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: airflow-scheduler-sa
+  namespace: airflow
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-scheduler-role
+  namespace: airflow
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-scheduler-rolebinding
+  namespace: airflow
+subjects:
+  - kind: ServiceAccount
+    name: airflow-scheduler-sa
+    namespace: airflow
+roleRef:
+  kind: Role
+  name: airflow-scheduler-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: airflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: airflow
+        component: scheduler
+    spec:
+      serviceAccountName: airflow-scheduler-sa
+      containers:
+        - name: scheduler
+          image: apache/airflow:2.7.2-python3.10
+          command: ["airflow", "scheduler"]
+          env:
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://postgres:mysecretpassword@postgres:5432/airflow
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: KubernetesExecutor
+            - name: AIRFLOW__KUBERNETES__NAMESPACE
+              value: airflow
+            - name: AIRFLOW__KUBERNETES__WORKER_CONTAINER_REPOSITORY
+              value: apache/airflow:2.7.2-python3.10
+            - name: AIRFLOW__KUBERNETES__WORKER_CONTAINER_TAG
+              value: 2.7.2-python3.10
+            - name: AIRFLOW__KUBERNETES__WORKER_REPLICAS
+              value: "1"
+            - name: AIRFLOW__KUBERNETES__WORKER_NODE_SELECTOR
+              value: '{"app": "airflow-worker"}'
+          volumeMounts:
+            - name: airflow-logs
+              mountPath: /opt/airflow/logs
+      volumes:
+        - name: airflow-logs
+          persistentVolumeClaim:
+            claimName: airflow-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-web
+  namespace: airflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow
+      component: web
+  template:
+    metadata:
+      labels:
+        app: airflow
+        component: web
+    spec:
+      containers:
+        - name: web
+          image: apache/airflow:2.7.2-python3.10
+          command: ["airflow", "webserver"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://postgres:mysecretpassword@postgres:5432/airflow
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: KubernetesExecutor
+            - name: AIRFLOW__KUBERNETES__NAMESPACE
+              value: airflow
+            - name: AIRFLOW__KUBERNETES__WORKER_CONTAINER_REPOSITORY
+              value: apache/airflow:2.7.2-python3.10
+            - name: AIRFLOW__KUBERNETES__WORKER_CONTAINER_TAG
+              value: 2.7.2-python3.10
+            - name: AIRFLOW__KUBERNETES__WORKER_REPLICAS
+              value: "1"
+            - name: AIRFLOW__KUBERNETES__WORKER_NODE_SELECTOR
+              value: '{"app": "airflow-worker"}'
+            - name: AIRFLOW__API__AUTH_BACKEND
+              value: airflow.api.auth.backend.basic_auth
+            - name: AIRFLOW__API__AUTH_BACKEND_BASIC_AUTH_USER
+              value: admin
+            - name: AIRFLOW__API__AUTH_BACKEND_BASIC_AUTH_PASSWORD
+              value: adminpassword
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "True"
+          volumeMounts:
+            - name: airflow-logs
+              mountPath: /opt/airflow/logs
+      volumes:
+        - name: airflow-logs
+          persistentVolumeClaim:
+            claimName: airflow-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-web
+  namespace: airflow
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: airflow
+    component: web
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airflow-db-init
+  namespace: airflow
+spec:
+  template:
+    spec:
+      containers:
+        - name: airflow-db-init
+          image: apache/airflow:2.7.2-python3.10
+          command: ["airflow", "db", "init"]
+          env:
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://postgres:mysecretpassword@postgres:5432/airflow
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: KubernetesExecutor
+      restartPolicy: OnFailure
+  backoffLimit: 4
