@@ -1,0 +1,138 @@
+import React, { useState, useEffect } from 'react';
+
+// Static data to simulate API responses
+const staticData = {
+    key1: ['Value 1A', 'Value 1B'],
+    key2: ['Value 2A', 'Value 2B'],
+    key3: ['Value 3A', 'Value 3B'],
+    key4: ['Value 4A', 'Value 4B'],
+    key5: ['Value 5A', 'Value 5B'],
+    key6: ['Value 6A', 'Value 6B'],
+    key7: ['Value 7A', 'Value 7B'],
+    key8: ['Value 8A', 'Value 8B'],
+    key9: ['Value 9A', 'Value 9B'],
+    key10: ['Value 10A', 'Value 10B'],
+};
+
+// Mock API call function
+const fetchValuesFromApi = async (key) => {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            resolve(staticData[key] || []);
+        }, 500); // Simulating network delay
+    });
+};
+
+const DynamicDropdowns = () => {
+    const [keys] = useState(Object.keys(staticData)); // Available keys
+    const [selectedKeys, setSelectedKeys] = useState(['key1', 'key2']); // Initialize with default keys
+    const [values, setValues] = useState({}); // Cached values from API
+    const [selectedValues, setSelectedValues] = useState({
+        key1: 'Value 1A',
+        key2: 'Value 2A',
+    }); // Initialize with default selected values
+    const [loading, setLoading] = useState(false); // Loading state
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const newValues = { ...values };
+                for (const key of selectedKeys) {
+                    if (key && !newValues[key]) {
+                        newValues[key] = await fetchValuesFromApi(key);
+                    }
+                }
+                setValues(newValues);
+            } catch (error) {
+                console.error('Failed to fetch values:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (selectedKeys.length > 0) {
+            fetchData();
+        }
+    }, [selectedKeys]);
+
+    const handleAddDropdown = () => {
+        setSelectedKeys([...selectedKeys, '']);
+    };
+
+    const handleRemoveDropdown = (index) => {
+        const updatedKeys = selectedKeys.filter((_, i) => i !== index);
+        const updatedValues = { ...values };
+        const removedKey = selectedKeys[index];
+        delete updatedValues[removedKey];
+        setSelectedKeys(updatedKeys);
+        setValues(updatedValues);
+        setSelectedValues((prev) => {
+            const updatedSelectedValues = { ...prev };
+            delete updatedSelectedValues[removedKey];
+            return updatedSelectedValues;
+        });
+    };
+
+    const handleKeyChange = (index, event) => {
+        const newKey = event.target.value;
+        const newSelectedKeys = [...selectedKeys];
+        newSelectedKeys[index] = newKey;
+        setSelectedKeys(newSelectedKeys);
+
+        // Update selectedValues if the key is newly selected
+        if (newKey && !selectedValues[newKey]) {
+            setSelectedValues((prev) => ({
+                ...prev,
+                [newKey]: staticData[newKey][0] || '', // Default to the first value
+            }));
+        }
+    };
+
+    const handleValueChange = (index, event) => {
+        const newValue = event.target.value;
+        const key = selectedKeys[index];
+        setSelectedValues((prev) => ({
+            ...prev,
+            [key]: newValue,
+        }));
+    };
+
+    return (
+        <div>
+            <button onClick={handleAddDropdown}>Add Dropdown</button>
+            {selectedKeys.map((key, index) => (
+                <div key={index} style={{ marginBottom: '10px' }}>
+                    <select
+                        value={key}
+                        onChange={(event) => handleKeyChange(index, event)}
+                    >
+                        <option value="">Select a key</option>
+                        {keys.map((keyOption) => (
+                            <option key={keyOption} value={keyOption}>
+                                {keyOption}
+                            </option>
+                        ))}
+                    </select>
+                    {key && (
+                        <select
+                            value={selectedValues[key] || ''}
+                            onChange={(event) => handleValueChange(index, event)}
+                        >
+                            <option value="">Select a value</option>
+                            {(values[key] || []).map((value, i) => (
+                                <option key={i} value={value}>
+                                    {value}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                    <button onClick={() => handleRemoveDropdown(index)}>Remove</button>
+                </div>
+            ))}
+            {loading && <div>Loading data...</div>}
+        </div>
+    );
+};
+
+export default DynamicDropdowns;
